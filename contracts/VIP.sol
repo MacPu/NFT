@@ -15,7 +15,7 @@ abstract contract VIP {
     mapping(uint256 => bool) private _vipNFTs;
 
     function _recordVIPNFTs(uint256 tokenId) internal {
-        require(_canCreateVIPNFTs(1));
+        require(_canMintVIPNFTs(1), "NFT: The vip NFTs has been mint out.");
 
         _vipNFTs[tokenId] = true;
         _vipTokenCounter.increment();
@@ -25,7 +25,7 @@ abstract contract VIP {
         return _vipNFTs[tokenId];
     } 
 
-    function _canCreateVIPNFTs(uint256 count) internal view returns(bool) {
+    function _canMintVIPNFTs(uint256 count) internal view returns(bool) {
         return _vipTokenCounter.current() + count < MAX_VIP_TOKEN_COUNT;
     }
 }

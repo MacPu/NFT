@@ -10,47 +10,92 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 import "./StageControl.sol";
 import "./VIP.sol";
+import "./Base64.sol";
 
-// import "hardhat/console.sol";
+// import "hardhat/console.sol";  // for test
 
 contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, VIP {
     using Counters for Counters.Counter;
 
+    struct Attr {
+        string name;
+        string image;
+        string attr0;
+        uint8 attr1;
+        uint8 attr2;
+        uint8 attr3;
+    }
+
     Counters.Counter private _tokenIdCounter;
+
+    mapping(uint256 => Attr) public attributes;
     
     bytes32 private constant vipRole = "vip";
-    bytes32 constant whiteListRole = "white_list";
+    bytes32 constant whiteListRole = "whitelist";
 
     constructor(string memory name, string memory symbol) ERC721(name, symbol) {
         _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(vipRole, _msgSender());
+        _grantRole(whiteListRole, _msgSender());
         _setupStage(1, 1000, 1, whiteListRole);
         _setupStage(2, 2000, 2, whiteListRole);
         _setupStage(3, 6800, 0, NO_ROLE_LIMIT);
     }
 
-    function createNFTs(string memory uri, uint256 stage, uint256 count) public onlyOwner onlyExistStage(stage) {
-        require(_canCreateNFTsInStage(stage, count), "NFT: cannot create NFTs in stage");
+    function mintNFTs(
+        string memory name,
+        string memory imageUrl,
+        string memory attr0,
+        uint8 attr1,
+        uint8 attr2,
+        uint8 attr3,
+        uint256 count
+        ) public onlyRole(whiteListRole) {
+
+        uint256 curStage = _getCurrentStage();
+        require(count > 0, "NFT: If you want mint NFTs, the count must >0.");
+        require(_canMintNFTsInStage(_msgSender(), curStage, count), "NFT: The NFTs of this current stage has been mint out.");
 
         for (uint256 i = 0; i < count; i++) {
-            uint256 tokenId = _tokenIdCounter.current();
-            _tokenIdCounter.increment();
-            _safeMint(_msgSender(), tokenId);
-            _setTokenURI(tokenId, uri);
-            _recordNFTStage(tokenId, stage);
+            uint256 tokenId = _mintNFT(name, imageUrl, attr0, attr1, attr2, attr3);
+            _recordNFTStage(tokenId, curStage);
         }
-        _createNFTsInStage(stage, count);
+        _afterMintNFTsInStage(curStage, count);
     }
 
-    function createVIPNFTs(string memory uri, uint256 count) public onlyOwner {
-        require(_canCreateVIPNFTs(count), "NFT: cannot create VIP NFTs");
+    function mintVIPNFTs(
+        string memory name,
+        string memory imageUrl,
+        string memory attr0,
+        uint8 attr1,
+        uint8 attr2,
+        uint8 attr3,
+        uint256 count
+        ) public onlyRole(vipRole) {
+
+        require(count > 0, "NFT: If you want mint NFTs, the count must >0.");
+        require(_canMintVIPNFTs(count), "NFT: The vip NFTs has been mint out.");
 
         for (uint256 i = 0; i < count; i++) {
-            uint256 tokenId = _tokenIdCounter.current();
-            _tokenIdCounter.increment();
-            _safeMint(_msgSender(), tokenId);
-            _setTokenURI(tokenId, uri);
+            uint256 tokenId = _mintNFT(name, imageUrl, attr0, attr1, attr2, attr3);
             _recordVIPNFTs(tokenId);
         }
+    }
+
+    function _mintNFT(
+        string memory name,
+        string memory image,
+        string memory attr0,
+        uint8 attr1,
+        uint8 attr2,
+        uint8 attr3
+        ) private returns(uint256) {
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        _safeMint(_msgSender(), tokenId);
+        
+        attributes[tokenId] = Attr(name, image, attr0, attr1, attr2, attr3);
+        return tokenId;
     }
 
     function addVIP(address vipAddress) public onlyOwner {
@@ -72,20 +117,17 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
         address to,
         uint256 tokenId
     ) public virtual override(ERC721) {
-        if (from == owner()) {  // first transfer, 
-            if (_isVIPToken(tokenId)) {
-                require(hasRole(vipRole, to), "NFT: cannot transfer token to this user, he/she is not vip.");
 
-                super.transferFrom(from, to, tokenId);
-            } else {
-                require(hasRole(whiteListRole, to), "NFT: cannot transfer token to this user, he/she is not whitelist user.");
-                require(_canTransferNFTToUserInCurrentStage(to, tokenId), "NFT: to user are over purchase limited");
+        if (_isVIPToken(tokenId)) {
+            require(hasRole(vipRole, to), "NFT: cannot transfer token to this user, he/she is not vip.");
 
-                super.transferFrom(from, to, tokenId);
-                _recordPurchaseInCurrentStage(to, tokenId);
-            }
-        } else  {
             super.transferFrom(from, to, tokenId);
+        } else {
+            require(hasRole(whiteListRole, to), "NFT: cannot transfer token to this user, he/she is not whitelist user.");
+            require(_canTransferNFTToUserInCurrentStage(to, tokenId), "NFT: to user are over purchase limited");
+
+            super.transferFrom(from, to, tokenId);
+            _recordPurchaseInCurrentStage(to, tokenId);
         }
     }
 
@@ -99,7 +141,20 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
         override(ERC721, ERC721URIStorage)
         returns (string memory)
     {
-        return super.tokenURI(tokenId);
+        string memory json = Base64.encode(
+            bytes(string(
+                abi.encodePacked(
+                    '{"name": "', attributes[tokenId].name, '",',
+                    '"image": "', attributes[tokenId].image, '",',
+                    '"attributes": [{"trait": "Attribute1", "value": ', Strings.toHexString(attributes[tokenId].attr1), '},',
+                    '{"trait": "Attribute2", "value": ', Strings.toHexString(attributes[tokenId].attr2), '},',
+                    '{"trait": "Attribute3", "value": ', Strings.toHexString(attributes[tokenId].attr3), '},',
+                    '{"trait": "Attribute0", "value": "', attributes[tokenId].attr0, '"},',
+                    ']}'
+                )
+            ))
+        );
+        return string(abi.encodePacked('data:application/json;base64,', json));
     }
 
     function supportsInterface(bytes4 interfaceId)  public view virtual override(ERC721, AccessControl) returns (bool)  {

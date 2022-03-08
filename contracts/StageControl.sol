@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "hardhat/console.sol";
 
 abstract contract StageControl {
     struct StageData {
@@ -21,7 +22,7 @@ abstract contract StageControl {
     uint256 private _curStage;
 
     modifier onlyExistStage(uint256 stage) {
-        require(_hasStage(stage), "StageControl: stage is not exist");
+        require(_hasStage(stage), "StageControl: you cannot mint in current stage");
                 
         _;
     }
@@ -41,50 +42,32 @@ abstract contract StageControl {
         _stages[stage].roleLimit = roleLimit;
     }
 
-    function _canCreateNFTsInStage(
+    function _canMintNFTsInStage(
+        address to,
         uint256 stage, 
         uint256 count
         ) internal view  onlyExistStage(stage) returns(bool) {
+        
+        require(_canOwnTokenInStage(to, stage, count), "StageControl: The user has enough token, cannot mint more.");
+        
         return _stages[stage].curCount + count <= _stages[stage].maxCount;
     }
 
-    function _hasStage(uint256 stage) private view returns(bool) {
-        return _stages[stage].maxCount > 0;
-    }
-
-    function _createNFTsInStage(uint256 stage, uint256 count) internal onlyExistStage(stage) {
-        require(_canCreateNFTsInStage(stage, count), "StageControl: cannot create NFTs in stage");
+    function _afterMintNFTsInStage(uint256 stage, uint256 count) internal onlyExistStage(stage) {
 
         _stages[stage].curCount += count;
-    }
-
-    function _getLimitedRoleInStage(uint256 stage) internal view onlyExistStage(stage) returns(bytes32) {
-        return _stages[stage].roleLimit;
     }
 
     function _setCurrentStage(uint256 curStage) internal onlyExistStage(curStage){
         _curStage = curStage;
     }
 
+    function _getCurrentStage() internal view returns(uint256) {
+        return _curStage;
+    }
+
     function _recordNFTStage(uint256 tokenId, uint256 stage) internal onlyExistStage(stage) {
         _nftsMapping[tokenId] = stage;
-    }
-
-    function _getStageFromNFT(uint256 tokenId) internal view returns(uint256) {
-        return _nftsMapping[tokenId];
-    }
-
-    function _canTransferNFTToUserInStage(address to, uint256 tokenId, uint256 stage) internal view onlyExistStage(stage) returns(bool) {
-        uint256 mStage = _getStageFromNFT(tokenId);
-        require(_hasStage(mStage), "StageControl: stage not exist");
-        require(mStage == stage, "StageControl: this token cannot be transfered in current stage");
-
-        uint256 purchaseLimit = _stages[stage].purchaseLimit;
-        if (purchaseLimit <= 0) { // no limit.
-            return true;
-        }
-        uint256 purchase = _stages[stage].purchaseRecord[to];
-        return purchase + 1 <= purchaseLimit;
     }
 
     function _canTransferNFTToUserInCurrentStage(address to, uint256 tokenId) internal view returns(bool) {
@@ -96,4 +79,34 @@ abstract contract StageControl {
 
         _stages[_curStage].purchaseRecord[to] += 1;
     }
+
+    // private functions
+
+    function _hasStage(uint256 stage) private view returns(bool) {
+        return _stages[stage].maxCount > 0;
+    }
+
+    function _canOwnTokenInStage(address to,  uint256 stage, uint256 count) private view returns(bool) {
+        require(_hasStage(stage), "StageControl: stage not exist");
+
+        uint256 purchaseLimit = _stages[stage].purchaseLimit;
+        if (purchaseLimit <= 0) { // no limit.
+            return true;
+        }
+        uint256 purchase = _stages[stage].purchaseRecord[to];
+        return purchase + count <= purchaseLimit;
+    }
+
+    function _getStageFromNFT(uint256 tokenId) internal view returns(uint256) {
+        return _nftsMapping[tokenId];
+    }
+
+    function _canTransferNFTToUserInStage(address to, uint256 tokenId, uint256 stage) internal view onlyExistStage(stage) returns(bool) {
+        uint256 mStage = _getStageFromNFT(tokenId);
+        require(_hasStage(mStage), "StageControl: stage not exist");
+        require(mStage == stage, "StageControl: this token cannot be transfered in current stage");
+
+        return _canOwnTokenInStage(to, stage, 1);
+    }
+
 }
