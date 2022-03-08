@@ -144,10 +144,10 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
                 abi.encodePacked(
                     '{"name": "', attributes[tokenId].name, '",',
                     '"image": "', attributes[tokenId].image, '",',
-                    '"attributes": [{"trait": "Attribute1", "value": ', Strings.toHexString(attributes[tokenId].attr1), '},',
-                    '{"trait": "Attribute2", "value": ', Strings.toHexString(attributes[tokenId].attr2), '},',
-                    '{"trait": "Attribute3", "value": ', Strings.toHexString(attributes[tokenId].attr3), '},',
-                    '{"trait": "Attribute0", "value": "', attributes[tokenId].attr0, '"},',
+                    '"attributes": [{"trait": "Attribute1", "value": ', Strings.toString(attributes[tokenId].attr1), '},',
+                    '{"trait": "Attribute2", "value": ', Strings.toString(attributes[tokenId].attr2), '},',
+                    '{"trait": "Attribute3", "value": ', Strings.toString(attributes[tokenId].attr3), '},',
+                    '{"trait": "Attribute0", "value": "', attributes[tokenId].attr0, '"}',
                     ']}'
                 )
             ))
