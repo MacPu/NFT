@@ -12,7 +12,7 @@ import "./StageControl.sol";
 import "./VIP.sol";
 import "./Base64.sol";
 
-// import "hardhat/console.sol";  // for test
+import "hardhat/console.sol";  // for test
 
 contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, VIP {
     using Counters for Counters.Counter;
@@ -39,7 +39,7 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
         _grantRole(whiteListRole, _msgSender());
         _setupStage(1, 1000, 1, whiteListRole);
         _setupStage(2, 2000, 2, whiteListRole);
-        _setupStage(3, 6800, 0, NO_ROLE_LIMIT);
+        _setupStage(3, 6800, NO_COUNT_LIMIT, NO_ROLE_LIMIT);
     }
 
     function mintNFTs(
@@ -51,16 +51,13 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
         uint8 attr3,
         uint256 count
         ) public onlyRole(whiteListRole) {
-
-        uint256 curStage = _getCurrentStage();
         require(count > 0, "NFT: If you want mint NFTs, the count must >0.");
-        require(_canMintNFTsInStage(_msgSender(), curStage, count), "NFT: The NFTs of this current stage has been mint out.");
+        require(_canMintNFTsInStage(_msgSender(), count), "NFT: Cannot mint NFTs in this stage.");
 
         for (uint256 i = 0; i < count; i++) {
             uint256 tokenId = _mintNFT(name, imageUrl, attr0, attr1, attr2, attr3);
-            _recordNFTStage(tokenId, curStage);
+            _recordNFTStage(_msgSender(), tokenId);
         }
-        _afterMintNFTsInStage(curStage, count);
     }
 
     function mintVIPNFTs(
@@ -118,16 +115,17 @@ contract NFT is ERC721, ERC721URIStorage, Ownable, AccessControl, StageControl, 
         uint256 tokenId
     ) public virtual override(ERC721) {
 
+        require(_exists(tokenId), "ERC721: operator query for nonexistent token");
         if (_isVIPToken(tokenId)) {
-            require(hasRole(vipRole, to), "NFT: cannot transfer token to this user, he/she is not vip.");
+            require(hasRole(vipRole, to), "NFT: cannot transfer token to this user, reciver is not vip.");
 
             super.transferFrom(from, to, tokenId);
         } else {
-            require(hasRole(whiteListRole, to), "NFT: cannot transfer token to this user, he/she is not whitelist user.");
-            require(_canTransferNFTToUserInCurrentStage(to, tokenId), "NFT: to user are over purchase limited");
+            require(hasRole(whiteListRole, to), "NFT: cannot transfer token to this user, reciver is not whitelist user.");
+            require(_canTransferNFTToUserInStage(to, tokenId), "NFT:revicer are over purchase limited.");
 
             super.transferFrom(from, to, tokenId);
-            _recordPurchaseInCurrentStage(to, tokenId);
+            _recordTransferInStage(from, to, tokenId);
         }
     }
 
